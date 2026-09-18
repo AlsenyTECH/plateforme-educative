@@ -1,0 +1,17 @@
+{
+  "name": "plateforme-educative",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plateforme de gestion scolaire multi-etablissements (web + mobile + Supabase)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "dev:mobile": "npm run start --workspace apps/mobile",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

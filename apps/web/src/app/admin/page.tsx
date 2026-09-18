@@ -59,14 +59,13 @@ export default function AdminPage() {
       .single();
 
     if (profileError || !profileData) {
-      setError("Profil introuvable.");
-      setLoading(false);
+      router.push("/onboarding");
       return;
     }
     setProfile(profileData);
 
     if (!profileData.school_id) {
-      setError("Ce compte n'est rattache a aucune ecole.");
+      setError("Ce compte parent n'est rattache a aucune ecole (normal si aucun enfant n'est encore inscrit).");
       setLoading(false);
       return;
     }

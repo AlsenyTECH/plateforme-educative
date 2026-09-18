@@ -5,12 +5,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { encodePayload, encodeToken, toPgBytea, fromPgBytea } from "../_shared/token.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
   try {
     const { student_id, reason } = await req.json();
     if (!student_id) {
-      return new Response(JSON.stringify({ error: "student_id requis" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "student_id requis" }), { status: 400, headers: jsonHeaders });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,7 +31,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: authData, error: authError } = await callerClient.auth.getUser();
     if (authError || !authData.user) {
-      return new Response(JSON.stringify({ error: "Non authentifie" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Non authentifie" }), { status: 401, headers: jsonHeaders });
     }
 
     const { data: student, error: studentError } = await callerClient
@@ -33,7 +40,10 @@ Deno.serve(async (req: Request) => {
       .eq("id", student_id)
       .single();
     if (studentError || !student) {
-      return new Response(JSON.stringify({ error: "Eleve introuvable ou non accessible" }), { status: 404 });
+      return new Response(JSON.stringify({ error: "Eleve introuvable ou non accessible" }), {
+        status: 404,
+        headers: jsonHeaders,
+      });
     }
 
     const { data: profile } = await callerClient
@@ -43,10 +53,10 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!profile || profile.school_id !== student.school_id || !["admin", "direction"].includes(profile.role)) {
-      return new Response(
-        JSON.stringify({ error: "Non autorise a emettre une carte pour cet eleve" }),
-        { status: 403 },
-      );
+      return new Response(JSON.stringify({ error: "Non autorise a emettre une carte pour cet eleve" }), {
+        status: 403,
+        headers: jsonHeaders,
+      });
     }
 
     // Client service_role : seul habilite a lire la cle privee de l'ecole.
@@ -60,7 +70,7 @@ Deno.serve(async (req: Request) => {
     if (keyError || !keyRow) {
       return new Response(
         JSON.stringify({ error: "Cette ecole n'a pas encore de cle de signature (voir issue-school-keys)" }),
-        { status: 409 },
+        { status: 409, headers: jsonHeaders },
       );
     }
 
@@ -121,12 +131,11 @@ Deno.serve(async (req: Request) => {
     });
     if (insertError) throw insertError;
 
-    return new Response(
-      JSON.stringify({ card_id: cardId, token: encodeToken(payloadBytes, signature) }),
-      { headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ card_id: cardId, token: encodeToken(payloadBytes, signature) }), {
+      headers: jsonHeaders,
+    });
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: "Erreur interne" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Erreur interne" }), { status: 500, headers: jsonHeaders });
   }
 });

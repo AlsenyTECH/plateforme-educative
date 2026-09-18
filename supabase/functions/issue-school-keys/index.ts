@@ -5,12 +5,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { toPgBytea } from "../_shared/token.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
   try {
     const { school_id } = await req.json();
     if (!school_id) {
-      return new Response(JSON.stringify({ error: "school_id requis" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "school_id requis" }), { status: 400, headers: jsonHeaders });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,7 +31,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: authData, error: authError } = await callerClient.auth.getUser();
     if (authError || !authData.user) {
-      return new Response(JSON.stringify({ error: "Non authentifie" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Non authentifie" }), { status: 401, headers: jsonHeaders });
     }
 
     const { data: profile } = await callerClient
@@ -34,7 +41,10 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!profile || profile.school_id !== school_id || !["admin", "direction"].includes(profile.role)) {
-      return new Response(JSON.stringify({ error: "Non autorise pour cette ecole" }), { status: 403 });
+      return new Response(JSON.stringify({ error: "Non autorise pour cette ecole" }), {
+        status: 403,
+        headers: jsonHeaders,
+      });
     }
 
     // Client service_role : seul habilite a lire/ecrire school_signing_keys,
@@ -50,7 +60,7 @@ Deno.serve(async (req: Request) => {
     if (existing) {
       return new Response(
         JSON.stringify({ error: "Cette ecole a deja une paire de cles ; pas d'ecrasement silencieux." }),
-        { status: 409 },
+        { status: 409, headers: jsonHeaders },
       );
     }
 
@@ -73,11 +83,9 @@ Deno.serve(async (req: Request) => {
       .eq("id", school_id);
     if (updateError) throw updateError;
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ success: true }), { headers: jsonHeaders });
   } catch (err) {
     console.error(err);
-    return new Response(JSON.stringify({ error: "Erreur interne" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "Erreur interne" }), { status: 500, headers: jsonHeaders });
   }
 });

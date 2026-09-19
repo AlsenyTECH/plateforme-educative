@@ -17,6 +17,12 @@ interface Link {
   relationship: string | null;
   students: { first_name: string; last_name: string } | null;
 }
+interface StudentResult {
+  id: string;
+  first_name: string;
+  last_name: string;
+  matricule: string | null;
+}
 
 export default function TuteursPage() {
   const router = useRouter();
@@ -31,6 +37,14 @@ export default function TuteursPage() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [profession, setProfession] = useState("");
+
+  const [attachingFor, setAttachingFor] = useState<string | null>(null);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [attachRelationship, setAttachRelationship] = useState("");
+  const [attachRole, setAttachRole] = useState("responsable_principal");
+  const [attaching, setAttaching] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -75,6 +89,64 @@ export default function TuteursPage() {
     void loadData();
   }, [loadData]);
 
+  // Recherche d'élève debouncée pour le rattachement (mode hors formulaire élève).
+  useEffect(() => {
+    if (!attachingFor || studentSearch.trim().length < 2 || !schoolId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStudentResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .from("students")
+        .select("id, first_name, last_name, matricule")
+        .eq("school_id", schoolId)
+        .or(`first_name.ilike.%${studentSearch}%,last_name.ilike.%${studentSearch}%`)
+        .limit(10);
+      setStudentResults(data ?? []);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [studentSearch, attachingFor, schoolId]);
+
+  function startAttaching(guardianId: string) {
+    setAttachingFor(guardianId);
+    setStudentSearch("");
+    setStudentResults([]);
+    setSelectedStudentId("");
+    setAttachRelationship("");
+    setAttachRole("responsable_principal");
+    setError(null);
+  }
+
+  async function handleAttach(guardianId: string) {
+    if (!schoolId || !selectedStudentId) return;
+    setAttaching(true);
+    setError(null);
+
+    const { error: attachError } = await supabase.rpc("attach_guardian", {
+      p_student_id: selectedStudentId,
+      p_school_id: schoolId,
+      p_role: attachRole,
+      p_relationship: attachRelationship || null,
+      p_guardian_id: guardianId,
+      p_parent_id: null,
+      p_new_first_name: null,
+      p_new_last_name: null,
+      p_new_phone: null,
+      p_new_email: null,
+    });
+
+    setAttaching(false);
+
+    if (attachError) {
+      setError(attachError.message);
+      return;
+    }
+
+    setAttachingFor(null);
+    await loadData();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!schoolId) return;
@@ -112,24 +184,80 @@ export default function TuteursPage() {
         </a>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Tuteurs</h1>
         <p className="text-xs text-zinc-500">
-          En général créés directement depuis la fiche d&apos;un élève — ce formulaire sert pour un tuteur sans élève
-          associé pour le moment.
+          Un tuteur peut être créé sans élève associé, puis rattaché à un ou plusieurs élèves plus tard via
+          &quot;Attacher à un élève&quot;.
         </p>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
         <ul className="flex flex-col gap-1 text-sm">
           {guardians.map((g) => {
             const kids = links.filter((l) => l.guardian_id === g.id);
+            const isAttaching = attachingFor === g.id;
             return (
               <li key={g.id} className="rounded border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-                <p className="text-zinc-900 dark:text-zinc-50">
-                  {g.first_name} {g.last_name} — {g.phone}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {kids.length > 0
-                    ? kids.map((k) => `${k.students?.first_name} ${k.students?.last_name} (${k.relationship})`).join(", ")
-                    : "Aucun élève lié"}
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-zinc-900 dark:text-zinc-50">
+                      {g.first_name} {g.last_name} — {g.phone}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {kids.length > 0
+                        ? kids.map((k) => `${k.students?.first_name} ${k.students?.last_name} (${k.relationship})`).join(", ")
+                        : "Aucun élève lié"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => (isAttaching ? setAttachingFor(null) : startAttaching(g.id))}
+                    className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    {isAttaching ? "Annuler" : "Attacher à un élève"}
+                  </button>
+                </div>
+
+                {isAttaching && (
+                  <div className="mt-2 flex flex-col gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+                    <input
+                      placeholder="Rechercher un élève par nom..."
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      className={inputClass}
+                    />
+                    <div className="flex flex-col gap-1">
+                      {studentResults.map((s) => (
+                        <label key={s.id} className="flex items-center gap-2 rounded border border-zinc-200 p-2 text-sm dark:border-zinc-800">
+                          <input
+                            type="radio"
+                            name={`student-${g.id}`}
+                            checked={selectedStudentId === s.id}
+                            onChange={() => setSelectedStudentId(s.id)}
+                          />
+                          {s.matricule ? `${s.matricule} — ` : ""}
+                          {s.first_name} {s.last_name}
+                        </label>
+                      ))}
+                      {studentSearch.length >= 2 && studentResults.length === 0 && (
+                        <p className="text-xs text-zinc-500">Aucun résultat.</p>
+                      )}
+                    </div>
+                    <input
+                      placeholder="Lien de parenté (ex. Oncle, Tuteur légal)"
+                      value={attachRelationship}
+                      onChange={(e) => setAttachRelationship(e.target.value)}
+                      className={inputClass}
+                    />
+                    <select value={attachRole} onChange={(e) => setAttachRole(e.target.value)} className={inputClass}>
+                      <option value="responsable_principal">Responsable principal</option>
+                      <option value="contact_secondaire">Contact secondaire</option>
+                    </select>
+                    <button
+                      onClick={() => handleAttach(g.id)}
+                      disabled={attaching || !selectedStudentId}
+                      className="self-start rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      {attaching ? "..." : "Confirmer le rattachement"}
+                    </button>
+                  </div>
+                )}
               </li>
             );
           })}

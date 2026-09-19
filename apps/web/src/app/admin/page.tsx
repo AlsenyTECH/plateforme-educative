@@ -30,6 +30,11 @@ interface CardResult {
   qrDataUrl: string;
 }
 
+interface Subject {
+  id: string;
+  name: string;
+}
+
 interface Admission {
   id: string;
   candidate_first_name: string;
@@ -55,6 +60,9 @@ export default function AdminPage() {
   const [issuingKeys, setIssuingKeys] = useState(false);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [decidingFor, setDecidingFor] = useState<string | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [savingSubject, setSavingSubject] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -120,8 +128,36 @@ export default function AdminPage() {
       .order("submitted_at", { ascending: false });
     setAdmissions(admissionsData ?? []);
 
+    const { data: subjectsData } = await supabase
+      .from("subjects")
+      .select("id, name")
+      .eq("school_id", profileData.school_id)
+      .order("name");
+    setSubjects(subjectsData ?? []);
+
     setLoading(false);
   }, [router]);
+
+  async function handleAddSubject(e: React.FormEvent) {
+    e.preventDefault();
+    if (!school || !newSubjectName.trim()) return;
+    setSavingSubject(true);
+    setError(null);
+
+    const { error: insertError } = await supabase
+      .from("subjects")
+      .insert({ school_id: school.id, name: newSubjectName.trim() });
+
+    setSavingSubject(false);
+
+    if (insertError) {
+      setError(`Erreur ajout matiere : ${insertError.message}`);
+      return;
+    }
+
+    setNewSubjectName("");
+    await loadData();
+  }
 
   async function handleAdmissionDecision(admissionId: string, status: "accepted" | "rejected") {
     setDecidingFor(admissionId);
@@ -281,6 +317,36 @@ export default function AdminPage() {
         </section>
 
         <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">Matières</h2>
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((s) => (
+              <span
+                key={s.id}
+                className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                {s.name}
+              </span>
+            ))}
+            {subjects.length === 0 && <p className="text-sm text-zinc-500">Aucune matière.</p>}
+          </div>
+          <form onSubmit={handleAddSubject} className="flex gap-2">
+            <input
+              placeholder="ex. Mathématiques"
+              value={newSubjectName}
+              onChange={(e) => setNewSubjectName(e.target.value)}
+              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            />
+            <button
+              type="submit"
+              disabled={savingSubject}
+              className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {savingSubject ? "..." : "Ajouter"}
+            </button>
+          </form>
+        </section>
+
+        <section className="flex flex-col gap-3">
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">Eleves</h2>
 
           {students.length === 0 && <p className="text-sm text-zinc-500">Aucun eleve pour le moment.</p>}
@@ -290,9 +356,9 @@ export default function AdminPage() {
               key={student.id}
               className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:items-center sm:justify-between"
             >
-              <span className="text-zinc-900 dark:text-zinc-50">
+              <a href={`/admin/eleves/${student.id}`} className="text-zinc-900 underline dark:text-zinc-50">
                 {student.first_name} {student.last_name}
-              </span>
+              </a>
 
               <div className="flex items-center gap-3">
                 <button

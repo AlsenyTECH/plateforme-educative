@@ -250,6 +250,8 @@ export default function AdminPage() {
           )}
           <nav className="mt-3 flex flex-wrap gap-2">
             {[
+              ["Utilisateurs", "/admin/utilisateurs"],
+              ["École", "/admin/ecole"],
               ["Annonces", "/admin/annonces"],
               ["Cours", "/admin/cours"],
               ["Emploi du temps", "/admin/emploi-du-temps"],

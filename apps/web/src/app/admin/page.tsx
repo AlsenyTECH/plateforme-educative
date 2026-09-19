@@ -248,6 +248,24 @@ export default function AdminPage() {
               Voir la vitrine publique /ecoles/{school.slug}
             </a>
           )}
+          <nav className="mt-3 flex flex-wrap gap-2">
+            {[
+              ["Annonces", "/admin/annonces"],
+              ["Cours", "/admin/cours"],
+              ["Emploi du temps", "/admin/emploi-du-temps"],
+              ["Vie scolaire", "/admin/vie-scolaire"],
+              ["Tutorat", "/admin/tutorat"],
+              ["RH", "/admin/rh"],
+            ].map(([label, href]) => (
+              <a
+                key={href}
+                href={href}
+                className="rounded-full bg-zinc-200 px-3 py-1 text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
         </header>
 
         {error && (

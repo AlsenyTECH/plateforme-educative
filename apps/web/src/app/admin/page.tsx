@@ -15,6 +15,7 @@ interface Profile {
 interface School {
   id: string;
   name: string;
+  slug: string;
   card_public_key: string | null;
 }
 
@@ -29,6 +30,19 @@ interface CardResult {
   qrDataUrl: string;
 }
 
+interface Admission {
+  id: string;
+  candidate_first_name: string;
+  candidate_last_name: string;
+  desired_level: string | null;
+  guardian_first_name: string;
+  guardian_last_name: string;
+  guardian_email: string;
+  guardian_phone: string | null;
+  status: "pending" | "accepted" | "rejected";
+  submitted_at: string;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -39,6 +53,8 @@ export default function AdminPage() {
   const [cardResults, setCardResults] = useState<Record<string, CardResult>>({});
   const [issuingFor, setIssuingFor] = useState<string | null>(null);
   const [issuingKeys, setIssuingKeys] = useState(false);
+  const [admissions, setAdmissions] = useState<Admission[]>([]);
+  const [decidingFor, setDecidingFor] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -72,7 +88,7 @@ export default function AdminPage() {
 
     const { data: schoolData, error: schoolError } = await supabase
       .from("schools")
-      .select("id, name, card_public_key")
+      .select("id, name, slug, card_public_key")
       .eq("id", profileData.school_id)
       .single();
 
@@ -95,8 +111,36 @@ export default function AdminPage() {
     }
     setStudents(studentsData ?? []);
 
+    const { data: admissionsData } = await supabase
+      .from("admissions")
+      .select(
+        "id, candidate_first_name, candidate_last_name, desired_level, guardian_first_name, guardian_last_name, guardian_email, guardian_phone, status, submitted_at",
+      )
+      .eq("school_id", profileData.school_id)
+      .order("submitted_at", { ascending: false });
+    setAdmissions(admissionsData ?? []);
+
     setLoading(false);
   }, [router]);
+
+  async function handleAdmissionDecision(admissionId: string, status: "accepted" | "rejected") {
+    setDecidingFor(admissionId);
+    setError(null);
+
+    const { error: updateError } = await supabase
+      .from("admissions")
+      .update({ status, decided_at: new Date().toISOString() })
+      .eq("id", admissionId);
+
+    setDecidingFor(null);
+
+    if (updateError) {
+      setError(`Erreur decision admission : ${updateError.message}`);
+      return;
+    }
+
+    await loadData();
+  }
 
   useEffect(() => {
     // Chargement au montage : le rendu en cascade que la regle signale est le
@@ -163,6 +207,11 @@ export default function AdminPage() {
               Connecte en tant que {profile.first_name} {profile.last_name} ({profile.role})
             </p>
           )}
+          {school && (
+            <a href={`/ecoles/${school.slug}`} className="text-sm text-zinc-500 underline" target="_blank">
+              Voir la vitrine publique /ecoles/{school.slug}
+            </a>
+          )}
         </header>
 
         {error && (
@@ -185,6 +234,51 @@ export default function AdminPage() {
             </button>
           </div>
         )}
+
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">Demandes d&apos;admission</h2>
+
+          {admissions.filter((a) => a.status === "pending").length === 0 && (
+            <p className="text-sm text-zinc-500">Aucune demande en attente.</p>
+          )}
+
+          {admissions
+            .filter((a) => a.status === "pending")
+            .map((admission) => (
+              <div
+                key={admission.id}
+                className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-zinc-900 dark:text-zinc-50">
+                    {admission.candidate_first_name} {admission.candidate_last_name}
+                    {admission.desired_level ? ` — ${admission.desired_level}` : ""}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Tuteur : {admission.guardian_first_name} {admission.guardian_last_name} ·{" "}
+                    {admission.guardian_email}
+                    {admission.guardian_phone ? ` · ${admission.guardian_phone}` : ""}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAdmissionDecision(admission.id, "accepted")}
+                    disabled={decidingFor === admission.id}
+                    className="rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Accepter
+                  </button>
+                  <button
+                    onClick={() => handleAdmissionDecision(admission.id, "rejected")}
+                    disabled={decidingFor === admission.id}
+                    className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Refuser
+                  </button>
+                </div>
+              </div>
+            ))}
+        </section>
 
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">Eleves</h2>

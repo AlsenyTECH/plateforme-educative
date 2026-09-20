@@ -80,7 +80,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    router.push("/admin");
+    router.push("/admin/configuration");
   }
 
   if (checking) {

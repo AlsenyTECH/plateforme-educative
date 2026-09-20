@@ -75,6 +75,7 @@ export default function EcolePage() {
 
   const [levelName, setLevelName] = useState("");
   const [yearLabel, setYearLabel] = useState("");
+  const [subjectName, setSubjectName] = useState("");
 
   const [className, setClassName] = useState("");
   const [classLevelId, setClassLevelId] = useState("");
@@ -127,9 +128,8 @@ export default function EcolePage() {
       setLegalNumber(schoolRes.data.legal_registration_number ?? "");
       setLogoUrl(await getPhotoUrl(schoolRes.data.logo_path));
     }
-    const levelsData = levelsRes.data ?? [];
     const yearsData = yearsRes.data ?? [];
-    setLevels(levelsData);
+    setLevels(levelsRes.data ?? []);
     setYears(yearsData);
     setClasses(classesRes.data ?? []);
     setSubjects(subjectsRes.data ?? []);
@@ -172,19 +172,6 @@ export default function EcolePage() {
     }
   }
 
-  async function addLevel(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !levelName.trim()) return;
-    const { error: err } = await supabase
-      .from("levels")
-      .insert({ school_id: school.id, name: levelName, order_index: levels.length + 1 });
-    if (err) setError(err.message);
-    else {
-      setLevelName("");
-      await loadData();
-    }
-  }
-
   async function addYear(e: React.FormEvent) {
     e.preventDefault();
     if (!school || !yearLabel.trim()) return;
@@ -201,6 +188,45 @@ export default function EcolePage() {
     await supabase.from("academic_years").update({ active: false }).eq("school_id", school.id);
     await supabase.from("academic_years").update({ active: true }).eq("id", yearId);
     await loadData();
+  }
+
+  async function addLevel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!school || !levelName.trim()) return;
+    const { error: err } = await supabase
+      .from("levels")
+      .insert({ school_id: school.id, name: levelName, order_index: levels.length + 1 });
+    if (err) setError(err.message);
+    else {
+      setLevelName("");
+      await loadData();
+    }
+  }
+
+  async function addSubject(e: React.FormEvent) {
+    e.preventDefault();
+    if (!school || !subjectName.trim()) return;
+    const { error: err } = await supabase.from("subjects").insert({ school_id: school.id, name: subjectName.trim() });
+    if (err) setError(err.message);
+    else {
+      setSubjectName("");
+      await loadData();
+    }
+  }
+
+  async function addCoefficient(e: React.FormEvent) {
+    e.preventDefault();
+    if (!school || !coefSubject || !coefLevel) return;
+    const value = Number(coefValue);
+    if (value < 1 || value > 10) {
+      setError("Le coefficient doit être entre 1 et 10.");
+      return;
+    }
+    const { error: err } = await supabase
+      .from("subject_coefficients")
+      .insert({ school_id: school.id, subject_id: coefSubject, level_id: coefLevel, coefficient: value });
+    if (err) setError(err.message);
+    else await loadData();
   }
 
   function startEditClass(c: ClassRow) {
@@ -238,21 +264,6 @@ export default function EcolePage() {
     else await loadData();
   }
 
-  async function addCoefficient(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !coefSubject || !coefLevel) return;
-    const value = Number(coefValue);
-    if (value < 1 || value > 10) {
-      setError("Le coefficient doit être entre 1 et 10.");
-      return;
-    }
-    const { error: err } = await supabase
-      .from("subject_coefficients")
-      .insert({ school_id: school.id, subject_id: coefSubject, level_id: coefLevel, coefficient: value });
-    if (err) setError(err.message);
-    else await loadData();
-  }
-
   async function addFee(e: React.FormEvent) {
     e.preventDefault();
     if (!school || !feeAmount) return;
@@ -275,14 +286,15 @@ export default function EcolePage() {
   return (
     <main className="min-h-screen bg-zinc-50 p-8 dark:bg-black">
       <div className="mx-auto flex max-w-2xl flex-col gap-8">
-        <a href="/admin" className="text-sm text-zinc-500 underline">
-          ← Retour
+        <a href="/admin/configuration" className="text-sm text-zinc-500 underline">
+          ← Retour à la configuration
         </a>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Réglages de l&apos;école</h1>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Identité de l&apos;école</h2>
+        {/* Étape 1 */}
+        <section id="identite" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">1. Identité de l&apos;école</h2>
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {logoUrl && <img src={logoUrl} alt="Logo" className="h-16 w-16 rounded object-cover" />}
@@ -297,26 +309,9 @@ export default function EcolePage() {
           </form>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Niveaux</h2>
-          <div className="flex flex-wrap gap-2">
-            {levels.map((l) => (
-              <span key={l.id} className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
-                {l.name}
-              </span>
-            ))}
-            {levels.length === 0 && <p className="text-sm text-zinc-500">Aucun niveau.</p>}
-          </div>
-          <form onSubmit={addLevel} className="flex gap-2">
-            <input placeholder="ex. Terminale S2" value={levelName} onChange={(e) => setLevelName(e.target.value)} className={inputClass} />
-            <button type="submit" className={btnClass}>
-              Ajouter
-            </button>
-          </form>
-        </section>
-
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Années scolaires</h2>
+        {/* Étape 2 */}
+        <section id="annee-scolaire" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">2. Année scolaire</h2>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400">
             {years.map((y) => (
               <li key={y.id} className="flex items-center justify-between">
@@ -340,8 +335,87 @@ export default function EcolePage() {
           </form>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Classes</h2>
+        {/* Étape 3 */}
+        <section id="niveaux" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">3. Niveaux</h2>
+          <div className="flex flex-wrap gap-2">
+            {levels.map((l) => (
+              <span key={l.id} className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                {l.name}
+              </span>
+            ))}
+            {levels.length === 0 && <p className="text-sm text-zinc-500">Aucun niveau.</p>}
+          </div>
+          <form onSubmit={addLevel} className="flex gap-2">
+            <input placeholder="ex. Terminale S2" value={levelName} onChange={(e) => setLevelName(e.target.value)} className={inputClass} />
+            <button type="submit" className={btnClass}>
+              Ajouter
+            </button>
+          </form>
+        </section>
+
+        {/* Étape 4 */}
+        <section id="matieres" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">4. Matières</h2>
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((s) => (
+              <span key={s.id} className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                {s.name}
+              </span>
+            ))}
+            {subjects.length === 0 && <p className="text-sm text-zinc-500">Aucune matière.</p>}
+          </div>
+          <form onSubmit={addSubject} className="flex gap-2">
+            <input placeholder="ex. Mathématiques" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} className={inputClass} />
+            <button type="submit" className={btnClass}>
+              Ajouter
+            </button>
+          </form>
+        </section>
+
+        {/* Étape 5 */}
+        <section id="coefficients" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">5. Coefficients par matière et niveau</h2>
+          {levels.some((l) => !coefficients.some((c) => c.level_id === l.id)) && (
+            <p className="rounded bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              Au moins un niveau n&apos;a encore aucun coefficient défini.
+            </p>
+          )}
+          <ul className="text-sm text-zinc-600 dark:text-zinc-400">
+            {coefficients.map((c) => (
+              <li key={c.id}>
+                {subjects.find((s) => s.id === c.subject_id)?.name ?? "?"} — {levels.find((l) => l.id === c.level_id)?.name} : coefficient {c.coefficient}
+              </li>
+            ))}
+            {coefficients.length === 0 && <li className="text-zinc-500">Aucun coefficient défini.</li>}
+          </ul>
+          <form onSubmit={addCoefficient} className="flex flex-wrap gap-2">
+            <select required value={coefSubject} onChange={(e) => setCoefSubject(e.target.value)} className={inputClass}>
+              <option value="">Matière...</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <select required value={coefLevel} onChange={(e) => setCoefLevel(e.target.value)} className={inputClass}>
+              <option value="">Niveau...</option>
+              {levels.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            <input type="number" min={1} max={10} value={coefValue} onChange={(e) => setCoefValue(e.target.value)} className={`w-20 ${inputClass}`} />
+            <button type="submit" className={btnClass}>
+              Définir
+            </button>
+          </form>
+        </section>
+
+        {/* Étape 6 */}
+        <section id="classes" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">6. Classes</h2>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400">
             {classes.map((c) => (
               <li key={c.id} className="flex items-center justify-between py-1">
@@ -396,42 +470,9 @@ export default function EcolePage() {
           </form>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Coefficients par matière et niveau</h2>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400">
-            {coefficients.map((c) => (
-              <li key={c.id}>
-                {subjects.find((s) => s.id === c.subject_id)?.name ?? "?"} — {levels.find((l) => l.id === c.level_id)?.name} : coefficient {c.coefficient}
-              </li>
-            ))}
-            {coefficients.length === 0 && <li className="text-zinc-500">Aucun coefficient défini.</li>}
-          </ul>
-          <form onSubmit={addCoefficient} className="flex flex-wrap gap-2">
-            <select required value={coefSubject} onChange={(e) => setCoefSubject(e.target.value)} className={inputClass}>
-              <option value="">Matière...</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select required value={coefLevel} onChange={(e) => setCoefLevel(e.target.value)} className={inputClass}>
-              <option value="">Niveau...</option>
-              {levels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <input type="number" min={1} max={10} value={coefValue} onChange={(e) => setCoefValue(e.target.value)} className={`w-20 ${inputClass}`} />
-            <button type="submit" className={btnClass}>
-              Définir
-            </button>
-          </form>
-        </section>
-
-        <section className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">Frais</h2>
+        {/* Étape 7 */}
+        <section id="frais" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">7. Frais</h2>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400">
             {fees.map((f) => (
               <li key={f.id}>

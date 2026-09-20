@@ -17,6 +17,8 @@ interface School {
   name: string;
   slug: string;
   card_public_key: string | null;
+  legal_name: string | null;
+  legal_registration_number: string | null;
 }
 
 interface Student {
@@ -28,11 +30,6 @@ interface Student {
 interface CardResult {
   token: string;
   qrDataUrl: string;
-}
-
-interface Subject {
-  id: string;
-  name: string;
 }
 
 interface Admission {
@@ -60,9 +57,7 @@ export default function AdminPage() {
   const [issuingKeys, setIssuingKeys] = useState(false);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [decidingFor, setDecidingFor] = useState<string | null>(null);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [newSubjectName, setNewSubjectName] = useState("");
-  const [savingSubject, setSavingSubject] = useState(false);
+  const [essentialStepsDone, setEssentialStepsDone] = useState<boolean | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -96,7 +91,7 @@ export default function AdminPage() {
 
     const { data: schoolData, error: schoolError } = await supabase
       .from("schools")
-      .select("id, name, slug, card_public_key")
+      .select("id, name, slug, card_public_key, legal_name, legal_registration_number")
       .eq("id", profileData.school_id)
       .single();
 
@@ -128,36 +123,25 @@ export default function AdminPage() {
       .order("submitted_at", { ascending: false });
     setAdmissions(admissionsData ?? []);
 
-    const { data: subjectsData } = await supabase
-      .from("subjects")
-      .select("id, name")
-      .eq("school_id", profileData.school_id)
-      .order("name");
-    setSubjects(subjectsData ?? []);
+    const [yearsCount, levelsCount, subjectsCount, coefCount, classesCount] = await Promise.all([
+      supabase.from("academic_years").select("id", { count: "exact", head: true }).eq("school_id", profileData.school_id),
+      supabase.from("levels").select("id", { count: "exact", head: true }).eq("school_id", profileData.school_id),
+      supabase.from("subjects").select("id", { count: "exact", head: true }).eq("school_id", profileData.school_id),
+      supabase.from("subject_coefficients").select("id", { count: "exact", head: true }).eq("school_id", profileData.school_id),
+      supabase.from("classes").select("id", { count: "exact", head: true }).eq("school_id", profileData.school_id),
+    ]);
+    setEssentialStepsDone(
+      Boolean(schoolData.legal_name) &&
+        Boolean(schoolData.legal_registration_number) &&
+        (yearsCount.count ?? 0) > 0 &&
+        (levelsCount.count ?? 0) > 0 &&
+        (subjectsCount.count ?? 0) > 0 &&
+        (coefCount.count ?? 0) > 0 &&
+        (classesCount.count ?? 0) > 0,
+    );
 
     setLoading(false);
   }, [router]);
-
-  async function handleAddSubject(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !newSubjectName.trim()) return;
-    setSavingSubject(true);
-    setError(null);
-
-    const { error: insertError } = await supabase
-      .from("subjects")
-      .insert({ school_id: school.id, name: newSubjectName.trim() });
-
-    setSavingSubject(false);
-
-    if (insertError) {
-      setError(`Erreur ajout matiere : ${insertError.message}`);
-      return;
-    }
-
-    setNewSubjectName("");
-    await loadData();
-  }
 
   async function handleAdmissionDecision(admissionId: string, status: "accepted" | "rejected") {
     setDecidingFor(admissionId);
@@ -250,6 +234,7 @@ export default function AdminPage() {
           )}
           <nav className="mt-3 flex flex-wrap gap-2">
             {[
+              ["Configuration", "/admin/configuration"],
               ["Utilisateurs", "/admin/utilisateurs"],
               ["École", "/admin/ecole"],
               ["Annonces", "/admin/annonces"],
@@ -274,6 +259,20 @@ export default function AdminPage() {
           <p className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
             {error}
           </p>
+        )}
+
+        {essentialStepsDone === false && (
+          <div className="rounded border border-blue-300 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+            <p className="mb-2 text-sm text-blue-800 dark:text-blue-200">
+              La configuration de l&apos;école n&apos;est pas terminée (année scolaire, niveaux, matières, coefficients ou classes manquants).
+            </p>
+            <a
+              href="/admin/configuration"
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              Reprendre la configuration
+            </a>
+          </div>
         )}
 
         {school && !school.card_public_key && (
@@ -334,36 +333,6 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">Matières</h2>
-          <div className="flex flex-wrap gap-2">
-            {subjects.map((s) => (
-              <span
-                key={s.id}
-                className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
-              >
-                {s.name}
-              </span>
-            ))}
-            {subjects.length === 0 && <p className="text-sm text-zinc-500">Aucune matière.</p>}
-          </div>
-          <form onSubmit={handleAddSubject} className="flex gap-2">
-            <input
-              placeholder="ex. Mathématiques"
-              value={newSubjectName}
-              onChange={(e) => setNewSubjectName(e.target.value)}
-              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-            />
-            <button
-              type="submit"
-              disabled={savingSubject}
-              className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              {savingSubject ? "..." : "Ajouter"}
-            </button>
-          </form>
         </section>
 
         <section className="flex flex-col gap-3">

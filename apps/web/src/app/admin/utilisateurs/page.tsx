@@ -4,6 +4,7 @@ export default function UtilisateursHub() {
     ["Enseignants", "/admin/utilisateurs/enseignants", "Profs et matières enseignées"],
     ["Personnel administratif", "/admin/utilisateurs/personnel", "Surveillants, direction, etc."],
     ["Tuteurs", "/admin/utilisateurs/tuteurs", "Parents et tuteurs, indépendamment d'un compte"],
+    ["Permissions", "/admin/utilisateurs/permissions", "Droits d'accès individuels par compte (notes, finances...)"],
   ];
 
   return (

@@ -13,6 +13,11 @@ import { corsHeaders } from "../_shared/cors.ts";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+// Liste standard pre-remplie a la creation (etape "Niveaux" du wizard,
+// confirmable/completable par l'admin ensuite) - evite de partir d'un
+// referentiel vide.
+const STANDARD_LEVELS = ["6e", "5e", "4e", "3e", "2nde", "1ère", "Terminale"];
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -94,6 +99,12 @@ Deno.serve(async (req: Request) => {
       await serviceClient.from("schools").delete().eq("id", newSchool.id);
       throw profileError;
     }
+
+    // Pre-remplissage des niveaux standards. Non bloquant si ca echoue :
+    // l'admin peut toujours les creer manuellement a l'etape "Niveaux" du wizard.
+    await serviceClient.from("levels").insert(
+      STANDARD_LEVELS.map((name, index) => ({ school_id: newSchool.id, name, order_index: index + 1 })),
+    );
 
     return new Response(JSON.stringify({ school_id: newSchool.id }), { headers: jsonHeaders });
   } catch (err) {

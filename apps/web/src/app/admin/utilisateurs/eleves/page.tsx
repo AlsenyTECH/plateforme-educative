@@ -10,11 +10,12 @@ interface Student {
   first_name: string;
   last_name: string;
   matricule: string | null;
-  niveau_vise: string | null;
+  niveau_vise_id: string | null;
   status: string;
 }
-interface ClassRow {
-  level: string;
+interface Level {
+  id: string;
+  name: string;
 }
 interface GuardianResult {
   id: string;
@@ -34,7 +35,7 @@ export default function ElevesPage() {
   const router = useRouter();
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [levels, setLevels] = useState<string[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -49,7 +50,7 @@ export default function ElevesPage() {
   const [nationality, setNationality] = useState("");
   const [address, setAddress] = useState("");
   const [nationalId, setNationalId] = useState("");
-  const [niveauVise, setNiveauVise] = useState("");
+  const [niveauViseId, setNiveauViseId] = useState("");
   const [previousSchool, setPreviousSchool] = useState("");
   const [medicalNotes, setMedicalNotes] = useState("");
 
@@ -90,13 +91,13 @@ export default function ElevesPage() {
     }
     setSchoolId(profile.school_id);
 
-    const [studentsRes, classesRes] = await Promise.all([
-      supabase.from("students").select("id, first_name, last_name, matricule, niveau_vise, status").eq("school_id", profile.school_id),
-      supabase.from("classes").select("level").eq("school_id", profile.school_id),
+    const [studentsRes, levelsRes] = await Promise.all([
+      supabase.from("students").select("id, first_name, last_name, matricule, niveau_vise_id, status").eq("school_id", profile.school_id),
+      supabase.from("levels").select("id, name").eq("school_id", profile.school_id).order("order_index"),
     ]);
 
     setStudents(studentsRes.data ?? []);
-    setLevels(Array.from(new Set((classesRes.data ?? []).map((c: ClassRow) => c.level))));
+    setLevels(levelsRes.data ?? []);
     setLoading(false);
   }, [router]);
 
@@ -142,7 +143,7 @@ export default function ElevesPage() {
       p_nationality: nationality || null,
       p_address: address || null,
       p_national_id_number: nationalId || null,
-      p_niveau_vise: niveauVise || null,
+      p_niveau_vise_id: niveauViseId || null,
       p_previous_school: previousSchool || null,
       p_pere_first_name: pere.first_name || null,
       p_pere_last_name: pere.last_name || null,
@@ -203,7 +204,7 @@ export default function ElevesPage() {
     setNationality("");
     setAddress("");
     setNationalId("");
-    setNiveauVise("");
+    setNiveauViseId("");
     setPreviousSchool("");
     setMedicalNotes("");
     setPere({ first_name: "", last_name: "", phone: "", address: "", email: "", profession: "", status: "disponible" });
@@ -258,7 +259,7 @@ export default function ElevesPage() {
               <a href={`/admin/eleves/${s.id}`} className="text-zinc-900 underline dark:text-zinc-50">
                 {s.matricule ? `${s.matricule} — ` : ""}
                 {s.first_name} {s.last_name}
-                {s.niveau_vise ? ` (${s.niveau_vise})` : ""}
+                {s.niveau_vise_id ? ` (${levels.find((l) => l.id === s.niveau_vise_id)?.name ?? "?"})` : ""}
               </a>
               <span className="text-xs text-zinc-500">{s.status}</span>
             </li>
@@ -290,12 +291,14 @@ export default function ElevesPage() {
             <input placeholder="Nationalité" value={nationality} onChange={(e) => setNationality(e.target.value)} className={inputClass} />
             <input placeholder="Adresse" value={address} onChange={(e) => setAddress(e.target.value)} className={inputClass} />
             <input placeholder="N° identifiant national / extrait de naissance" value={nationalId} onChange={(e) => setNationalId(e.target.value)} className={inputClass} />
-            <input required list="levels" placeholder="Niveau visé" value={niveauVise} onChange={(e) => setNiveauVise(e.target.value)} className={inputClass} />
-            <datalist id="levels">
+            <select required value={niveauViseId} onChange={(e) => setNiveauViseId(e.target.value)} className={inputClass}>
+              <option value="">Niveau visé...</option>
               {levels.map((l) => (
-                <option key={l} value={l} />
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
               ))}
-            </datalist>
+            </select>
             <input placeholder="École précédente" value={previousSchool} onChange={(e) => setPreviousSchool(e.target.value)} className={inputClass} />
           </div>
           <textarea

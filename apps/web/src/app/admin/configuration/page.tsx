@@ -3,13 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import NiveauxDrawer from "./NiveauxDrawer";
+
+interface Level {
+  id: string;
+  name: string;
+  order_index: number;
+}
 
 interface StepStatus {
   id: string;
   order: number;
   title: string;
   description: string;
-  href: string;
+  href?: string;
+  openDrawer?: boolean;
   done: boolean;
   essential: boolean;
   blocking: boolean;
@@ -19,8 +27,11 @@ export default function ConfigurationPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [schoolId, setSchoolId] = useState<string | null>(null);
   const [schoolName, setSchoolName] = useState<string>("");
+  const [levels, setLevels] = useState<Level[]>([]);
   const [steps, setSteps] = useState<StepStatus[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -43,20 +54,20 @@ export default function ConfigurationPage() {
       setLoading(false);
       return;
     }
-    const schoolId = profile.school_id;
+    setSchoolId(profile.school_id);
 
     const [schoolRes, yearsRes, levelsRes, subjectsRes, coefRes, classesRes, feesRes, teachersRes, staffRes, studentsRes] =
       await Promise.all([
-        supabase.from("schools").select("name, legal_name, legal_registration_number").eq("id", schoolId).single(),
-        supabase.from("academic_years").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("levels").select("id").eq("school_id", schoolId),
-        supabase.from("subjects").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("subject_coefficients").select("level_id").eq("school_id", schoolId),
-        supabase.from("classes").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("fee_structures").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("teachers").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("staff_members").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
-        supabase.from("students").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+        supabase.from("schools").select("name, legal_name, legal_registration_number").eq("id", profile.school_id).single(),
+        supabase.from("academic_years").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("levels").select("id, name, order_index").eq("school_id", profile.school_id).order("order_index"),
+        supabase.from("subjects").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("subject_coefficients").select("level_id").eq("school_id", profile.school_id),
+        supabase.from("classes").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("fee_structures").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("teachers").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("staff_members").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+        supabase.from("students").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
       ]);
 
     const school = schoolRes.data;
@@ -64,12 +75,14 @@ export default function ConfigurationPage() {
 
     const identiteDone = Boolean(school?.legal_name) && Boolean(school?.legal_registration_number);
     const anneeDone = (yearsRes.count ?? 0) > 0;
-    const levels = levelsRes.data ?? [];
-    const niveauxDone = levels.length > 0;
+    const levelsData = levelsRes.data ?? [];
+    setLevels(levelsData);
+    const niveauxDone = levelsData.length > 0;
     const matieresDone = (subjectsRes.count ?? 0) > 0;
     const coveredLevelIds = new Set((coefRes.data ?? []).map((c) => c.level_id));
-    const coefficientsDone = niveauxDone && levels.every((l) => coveredLevelIds.has(l.id));
+    const coefficientsDone = niveauxDone && levelsData.every((l) => coveredLevelIds.has(l.id));
     const classesDone = (classesRes.count ?? 0) > 0;
+    const contenuNiveauxDone = matieresDone && coefficientsDone && classesDone;
     const fraisDone = (feesRes.count ?? 0) > 0;
     const enseignantsDone = (teachersRes.count ?? 0) > 0;
     const personnelDone = (staffRes.count ?? 0) > 0;
@@ -101,46 +114,26 @@ export default function ConfigurationPage() {
         order: 3,
         title: "Niveaux",
         description: "Les niveaux enseignés dans l'établissement (ex. 6e, Terminale).",
-        href: "/admin/ecole#niveaux",
+        openDrawer: true,
         done: niveauxDone,
         essential: true,
         blocking: true,
       },
       {
-        id: "matieres",
+        id: "contenu-niveaux",
         order: 4,
-        title: "Matières",
-        description: "Les matières enseignées.",
-        href: "/admin/ecole#matieres",
-        done: matieresDone,
-        essential: true,
-        blocking: true,
-      },
-      {
-        id: "coefficients",
-        order: 5,
-        title: "Coefficients",
-        description: "Coefficient de chaque matière par niveau (obligatoire mais ne bloque pas la suite).",
-        href: "/admin/ecole#coefficients",
-        done: coefficientsDone,
-        essential: true,
-        blocking: false,
-      },
-      {
-        id: "classes",
-        order: 6,
-        title: "Classes",
-        description: "Les classes de l'établissement pour l'année en cours.",
-        href: "/admin/ecole#classes",
-        done: classesDone,
+        title: "Matières, coefficients et classes par niveau",
+        description: "Pour chaque niveau : matières, coefficients, quantum horaire, classes et frais (inscription, mensualité).",
+        openDrawer: true,
+        done: contenuNiveauxDone,
         essential: true,
         blocking: true,
       },
       {
         id: "frais",
-        order: 7,
-        title: "Frais",
-        description: "Inscription, mensualité, cantine, transport.",
+        order: 5,
+        title: "Frais généraux",
+        description: "Cantine, transport (montant unique pour toute l'école).",
         href: "/admin/ecole#frais",
         done: fraisDone,
         essential: false,
@@ -148,7 +141,7 @@ export default function ConfigurationPage() {
       },
       {
         id: "enseignants",
-        order: 8,
+        order: 6,
         title: "Enseignants",
         description: "Créer les enseignants et leur affecter leurs matières.",
         href: "/admin/utilisateurs/enseignants",
@@ -158,7 +151,7 @@ export default function ConfigurationPage() {
       },
       {
         id: "personnel",
-        order: 9,
+        order: 7,
         title: "Personnel administratif",
         description: "Surveillants, direction des études, etc.",
         href: "/admin/utilisateurs/personnel",
@@ -168,7 +161,7 @@ export default function ConfigurationPage() {
       },
       {
         id: "eleves",
-        order: 10,
+        order: 8,
         title: "Élèves",
         description: "Inscrire les élèves et leurs tuteurs.",
         href: "/admin/utilisateurs/eleves",
@@ -194,8 +187,6 @@ export default function ConfigurationPage() {
   const otherSteps = steps.filter((s) => !s.essential);
 
   // Une étape "blocking" n'est accessible que si toutes les étapes bloquantes précédentes sont faites.
-  // Une étape non-bloquante (coefficients) ne fait pas partie de la chaîne : elle est accessible dès
-  // que son propre prérequis est rempli, sans empêcher l'étape suivante d'être atteinte.
   let chainOk = true;
   const unlocked = new Map<string, boolean>();
   for (const step of essentialSteps) {
@@ -223,28 +214,42 @@ export default function ConfigurationPage() {
         </div>
 
         <div className="flex flex-col gap-2">
-          {essentialSteps.map((step) => {
-            const isUnlocked = unlocked.get(step.id) ?? false;
-            return (
-              <StepCard key={step.id} step={step} unlocked={isUnlocked} />
-            );
-          })}
+          {essentialSteps.map((step) => (
+            <StepCard key={step.id} step={step} unlocked={unlocked.get(step.id) ?? false} onOpenDrawer={() => setDrawerOpen(true)} />
+          ))}
         </div>
 
         <div>
           <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-500">Pour aller plus loin</h2>
           <div className="flex flex-col gap-2">
             {otherSteps.map((step) => (
-              <StepCard key={step.id} step={step} unlocked />
+              <StepCard key={step.id} step={step} unlocked onOpenDrawer={() => setDrawerOpen(true)} />
             ))}
           </div>
         </div>
       </div>
+
+      {drawerOpen && schoolId && (
+        <NiveauxDrawer
+          schoolId={schoolId}
+          levels={levels}
+          onClose={() => setDrawerOpen(false)}
+          onLevelCreated={() => void loadData()}
+        />
+      )}
     </main>
   );
 }
 
-function StepCard({ step, unlocked }: { step: StepStatus; unlocked: boolean }) {
+function StepCard({
+  step,
+  unlocked,
+  onOpenDrawer,
+}: {
+  step: StepStatus;
+  unlocked: boolean;
+  onOpenDrawer: () => void;
+}) {
   const content = (
     <div
       className={`flex items-center justify-between rounded-lg border p-4 ${
@@ -275,6 +280,13 @@ function StepCard({ step, unlocked }: { step: StepStatus; unlocked: boolean }) {
   );
 
   if (!unlocked) return content;
+  if (step.openDrawer) {
+    return (
+      <button onClick={onOpenDrawer} className="block w-full text-left">
+        {content}
+      </button>
+    );
+  }
   return (
     <a href={step.href} className="block">
       {content}

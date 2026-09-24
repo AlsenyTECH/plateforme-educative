@@ -22,22 +22,6 @@ interface AcademicYear {
   label: string;
   active: boolean;
 }
-interface ClassRow {
-  id: string;
-  name: string;
-  level_id: string;
-  academic_year_id: string;
-}
-interface Subject {
-  id: string;
-  name: string;
-}
-interface Coefficient {
-  id: string;
-  subject_id: string;
-  level_id: string;
-  coefficient: number;
-}
 interface Fee {
   id: string;
   level_id: string | null;
@@ -45,11 +29,9 @@ interface Fee {
   amount: number;
 }
 
-const FEE_TYPES = [
-  ["inscription", "Frais d'inscription", true],
-  ["mensualite", "Mensualité", true],
-  ["cantine", "Cantine", false],
-  ["transport", "Transport", false],
+const GENERAL_FEE_TYPES = [
+  ["cantine", "Cantine"],
+  ["transport", "Transport"],
 ] as const;
 
 const inputClass =
@@ -63,9 +45,6 @@ export default function EcolePage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [levels, setLevels] = useState<Level[]>([]);
   const [years, setYears] = useState<AcademicYear[]>([]);
-  const [classes, setClasses] = useState<ClassRow[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [coefficients, setCoefficients] = useState<Coefficient[]>([]);
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,22 +54,9 @@ export default function EcolePage() {
 
   const [levelName, setLevelName] = useState("");
   const [yearLabel, setYearLabel] = useState("");
-  const [subjectName, setSubjectName] = useState("");
 
-  const [className, setClassName] = useState("");
-  const [classLevelId, setClassLevelId] = useState("");
-  const [classYearId, setClassYearId] = useState("");
-  const [editingClassId, setEditingClassId] = useState<string | null>(null);
-
-  const [coefSubject, setCoefSubject] = useState("");
-  const [coefLevel, setCoefLevel] = useState("");
-  const [coefValue, setCoefValue] = useState("1");
-
-  const [feeType, setFeeType] = useState<(typeof FEE_TYPES)[number][0]>("mensualite");
-  const [feeLevelId, setFeeLevelId] = useState("");
+  const [feeType, setFeeType] = useState<(typeof GENERAL_FEE_TYPES)[number][0]>("cantine");
   const [feeAmount, setFeeAmount] = useState("");
-
-  const feeUsesLevel = FEE_TYPES.find(([k]) => k === feeType)?.[2] ?? false;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -112,14 +78,11 @@ export default function EcolePage() {
       return;
     }
 
-    const [schoolRes, levelsRes, yearsRes, classesRes, subjectsRes, coefRes, feesRes] = await Promise.all([
+    const [schoolRes, levelsRes, yearsRes, feesRes] = await Promise.all([
       supabase.from("schools").select("id, name, legal_name, legal_registration_number, logo_path").eq("id", profile.school_id).single(),
       supabase.from("levels").select("id, name, order_index").eq("school_id", profile.school_id).order("order_index"),
       supabase.from("academic_years").select("id, label, active").eq("school_id", profile.school_id).order("label", { ascending: false }),
-      supabase.from("classes").select("id, name, level_id, academic_year_id").eq("school_id", profile.school_id),
-      supabase.from("subjects").select("id, name").eq("school_id", profile.school_id),
-      supabase.from("subject_coefficients").select("id, subject_id, level_id, coefficient").eq("school_id", profile.school_id),
-      supabase.from("fee_structures").select("id, level_id, fee_type, amount").eq("school_id", profile.school_id),
+      supabase.from("fee_structures").select("id, level_id, fee_type, amount").eq("school_id", profile.school_id).is("level_id", null),
     ]);
 
     if (schoolRes.data) {
@@ -128,25 +91,17 @@ export default function EcolePage() {
       setLegalNumber(schoolRes.data.legal_registration_number ?? "");
       setLogoUrl(await getPhotoUrl(schoolRes.data.logo_path));
     }
-    const yearsData = yearsRes.data ?? [];
     setLevels(levelsRes.data ?? []);
-    setYears(yearsData);
-    setClasses(classesRes.data ?? []);
-    setSubjects(subjectsRes.data ?? []);
-    setCoefficients(coefRes.data ?? []);
+    setYears(yearsRes.data ?? []);
     setFees(feesRes.data ?? []);
 
-    const activeYear = yearsData.find((y) => y.active);
-    if (activeYear && !classYearId) setClassYearId(activeYear.id);
-
     setLoading(false);
-  }, [router, classYearId]);
+  }, [router]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadData]);
 
   async function handleSaveLegal(e: React.FormEvent) {
     e.preventDefault();
@@ -203,77 +158,13 @@ export default function EcolePage() {
     }
   }
 
-  async function addSubject(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !subjectName.trim()) return;
-    const { error: err } = await supabase.from("subjects").insert({ school_id: school.id, name: subjectName.trim() });
-    if (err) setError(err.message);
-    else {
-      setSubjectName("");
-      await loadData();
-    }
-  }
-
-  async function addCoefficient(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !coefSubject || !coefLevel) return;
-    const value = Number(coefValue);
-    if (value < 1 || value > 10) {
-      setError("Le coefficient doit être entre 1 et 10.");
-      return;
-    }
-    const { error: err } = await supabase
-      .from("subject_coefficients")
-      .insert({ school_id: school.id, subject_id: coefSubject, level_id: coefLevel, coefficient: value });
-    if (err) setError(err.message);
-    else await loadData();
-  }
-
-  function startEditClass(c: ClassRow) {
-    setEditingClassId(c.id);
-    setClassName(c.name);
-    setClassLevelId(c.level_id);
-    setClassYearId(c.academic_year_id);
-  }
-
-  async function submitClass(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !className.trim() || !classLevelId || !classYearId) return;
-
-    if (editingClassId) {
-      const { error: err } = await supabase
-        .from("classes")
-        .update({ name: className, level_id: classLevelId, academic_year_id: classYearId })
-        .eq("id", editingClassId);
-      if (err) setError(err.message);
-    } else {
-      const { error: err } = await supabase
-        .from("classes")
-        .insert({ school_id: school.id, name: className, level_id: classLevelId, academic_year_id: classYearId });
-      if (err) setError(err.message);
-    }
-
-    setEditingClassId(null);
-    setClassName("");
-    await loadData();
-  }
-
-  async function deleteClass(id: string) {
-    const { error: err } = await supabase.from("classes").delete().eq("id", id);
-    if (err) setError(err.message);
-    else await loadData();
-  }
-
   async function addFee(e: React.FormEvent) {
     e.preventDefault();
     if (!school || !feeAmount) return;
-    if (feeUsesLevel && !feeLevelId) {
-      setError("Choisis un niveau pour ce type de frais.");
-      return;
-    }
-    const { error: err } = await supabase
-      .from("fee_structures")
-      .insert({ school_id: school.id, fee_type: feeType, level_id: feeUsesLevel ? feeLevelId : null, amount: Number(feeAmount) });
+    const existing = fees.find((f) => f.fee_type === feeType);
+    const { error: err } = existing
+      ? await supabase.from("fee_structures").update({ amount: Number(feeAmount) }).eq("id", existing.id)
+      : await supabase.from("fee_structures").insert({ school_id: school.id, fee_type: feeType, level_id: null, amount: Number(feeAmount) });
     if (err) setError(err.message);
     else {
       setFeeAmount("");
@@ -338,11 +229,18 @@ export default function EcolePage() {
         {/* Étape 3 */}
         <section id="niveaux" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="font-medium text-zinc-900 dark:text-zinc-50">3. Niveaux</h2>
+          <p className="text-sm text-zinc-500">
+            Matières, coefficients, quantum horaire, classes et frais par niveau se configurent depuis la page de chaque niveau.
+          </p>
           <div className="flex flex-wrap gap-2">
             {levels.map((l) => (
-              <span key={l.id} className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
-                {l.name}
-              </span>
+              <a
+                key={l.id}
+                href={`/admin/ecole/niveaux/${l.id}`}
+                className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                {l.name} →
+              </a>
             ))}
             {levels.length === 0 && <p className="text-sm text-zinc-500">Aucun niveau.</p>}
           </div>
@@ -355,151 +253,27 @@ export default function EcolePage() {
         </section>
 
         {/* Étape 4 */}
-        <section id="matieres" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">4. Matières</h2>
-          <div className="flex flex-wrap gap-2">
-            {subjects.map((s) => (
-              <span key={s.id} className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
-                {s.name}
-              </span>
-            ))}
-            {subjects.length === 0 && <p className="text-sm text-zinc-500">Aucune matière.</p>}
-          </div>
-          <form onSubmit={addSubject} className="flex gap-2">
-            <input placeholder="ex. Mathématiques" value={subjectName} onChange={(e) => setSubjectName(e.target.value)} className={inputClass} />
-            <button type="submit" className={btnClass}>
-              Ajouter
-            </button>
-          </form>
-        </section>
-
-        {/* Étape 5 */}
-        <section id="coefficients" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">5. Coefficients par matière et niveau</h2>
-          {levels.some((l) => !coefficients.some((c) => c.level_id === l.id)) && (
-            <p className="rounded bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-              Au moins un niveau n&apos;a encore aucun coefficient défini.
-            </p>
-          )}
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400">
-            {coefficients.map((c) => (
-              <li key={c.id}>
-                {subjects.find((s) => s.id === c.subject_id)?.name ?? "?"} — {levels.find((l) => l.id === c.level_id)?.name} : coefficient {c.coefficient}
-              </li>
-            ))}
-            {coefficients.length === 0 && <li className="text-zinc-500">Aucun coefficient défini.</li>}
-          </ul>
-          <form onSubmit={addCoefficient} className="flex flex-wrap gap-2">
-            <select required value={coefSubject} onChange={(e) => setCoefSubject(e.target.value)} className={inputClass}>
-              <option value="">Matière...</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select required value={coefLevel} onChange={(e) => setCoefLevel(e.target.value)} className={inputClass}>
-              <option value="">Niveau...</option>
-              {levels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <input type="number" min={1} max={10} value={coefValue} onChange={(e) => setCoefValue(e.target.value)} className={`w-20 ${inputClass}`} />
-            <button type="submit" className={btnClass}>
-              Définir
-            </button>
-          </form>
-        </section>
-
-        {/* Étape 6 */}
-        <section id="classes" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">6. Classes</h2>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400">
-            {classes.map((c) => (
-              <li key={c.id} className="flex items-center justify-between py-1">
-                <span>
-                  {c.name} — {levels.find((l) => l.id === c.level_id)?.name} ({years.find((y) => y.id === c.academic_year_id)?.label})
-                </span>
-                <span className="flex gap-2 text-xs">
-                  <button onClick={() => startEditClass(c)} className="underline">
-                    Modifier
-                  </button>
-                  <button onClick={() => deleteClass(c.id)} className="text-red-600 underline dark:text-red-400">
-                    Supprimer
-                  </button>
-                </span>
-              </li>
-            ))}
-            {classes.length === 0 && <li className="text-zinc-500">Aucune classe.</li>}
-          </ul>
-          <form onSubmit={submitClass} className="flex flex-wrap gap-2">
-            <input required placeholder="Nom (ex. Seconde A)" value={className} onChange={(e) => setClassName(e.target.value)} className={inputClass} />
-            <select required value={classLevelId} onChange={(e) => setClassLevelId(e.target.value)} className={inputClass}>
-              <option value="">Niveau...</option>
-              {levels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-            <select required value={classYearId} onChange={(e) => setClassYearId(e.target.value)} className={inputClass}>
-              <option value="">Année scolaire...</option>
-              {years.map((y) => (
-                <option key={y.id} value={y.id}>
-                  {y.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className={btnClass}>
-              {editingClassId ? "Enregistrer" : "Créer"}
-            </button>
-            {editingClassId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingClassId(null);
-                  setClassName("");
-                }}
-                className="text-xs underline"
-              >
-                Annuler
-              </button>
-            )}
-          </form>
-        </section>
-
-        {/* Étape 7 */}
         <section id="frais" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">7. Frais</h2>
+          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">4. Frais généraux</h2>
+          <p className="text-sm text-zinc-500">
+            Cantine et transport (montant unique pour toute l&apos;école). L&apos;inscription et la mensualité, qui varient par niveau, se règlent depuis la page de chaque niveau.
+          </p>
           <ul className="text-sm text-zinc-600 dark:text-zinc-400">
             {fees.map((f) => (
               <li key={f.id}>
-                {FEE_TYPES.find(([k]) => k === f.fee_type)?.[1] ?? f.fee_type}
-                {f.level_id ? ` — ${levels.find((l) => l.id === f.level_id)?.name}` : " — toute l'école"} : {f.amount} FCFA
+                {GENERAL_FEE_TYPES.find(([k]) => k === f.fee_type)?.[1] ?? f.fee_type} : {f.amount} FCFA
               </li>
             ))}
             {fees.length === 0 && <li className="text-zinc-500">Aucun frais défini.</li>}
           </ul>
           <form onSubmit={addFee} className="flex flex-wrap gap-2">
             <select value={feeType} onChange={(e) => setFeeType(e.target.value as typeof feeType)} className={inputClass}>
-              {FEE_TYPES.map(([k, label]) => (
+              {GENERAL_FEE_TYPES.map(([k, label]) => (
                 <option key={k} value={k}>
                   {label}
                 </option>
               ))}
             </select>
-            {feeUsesLevel && (
-              <select required value={feeLevelId} onChange={(e) => setFeeLevelId(e.target.value)} className={inputClass}>
-                <option value="">Niveau...</option>
-                {levels.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            )}
             <input required type="number" placeholder="Montant (FCFA)" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={`w-32 ${inputClass}`} />
             <button type="submit" className={btnClass}>
               Définir

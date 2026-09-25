@@ -22,17 +22,6 @@ interface AcademicYear {
   label: string;
   active: boolean;
 }
-interface Fee {
-  id: string;
-  level_id: string | null;
-  fee_type: string;
-  amount: number;
-}
-
-const GENERAL_FEE_TYPES = [
-  ["cantine", "Cantine"],
-  ["transport", "Transport"],
-] as const;
 
 const inputClass =
   "rounded border border-zinc-300 px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
@@ -45,7 +34,6 @@ export default function EcolePage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [levels, setLevels] = useState<Level[]>([]);
   const [years, setYears] = useState<AcademicYear[]>([]);
-  const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,9 +42,6 @@ export default function EcolePage() {
 
   const [levelName, setLevelName] = useState("");
   const [yearLabel, setYearLabel] = useState("");
-
-  const [feeType, setFeeType] = useState<(typeof GENERAL_FEE_TYPES)[number][0]>("cantine");
-  const [feeAmount, setFeeAmount] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -78,11 +63,10 @@ export default function EcolePage() {
       return;
     }
 
-    const [schoolRes, levelsRes, yearsRes, feesRes] = await Promise.all([
+    const [schoolRes, levelsRes, yearsRes] = await Promise.all([
       supabase.from("schools").select("id, name, legal_name, legal_registration_number, logo_path").eq("id", profile.school_id).single(),
       supabase.from("levels").select("id, name, order_index").eq("school_id", profile.school_id).order("order_index"),
       supabase.from("academic_years").select("id, label, active").eq("school_id", profile.school_id).order("label", { ascending: false }),
-      supabase.from("fee_structures").select("id, level_id, fee_type, amount").eq("school_id", profile.school_id).is("level_id", null),
     ]);
 
     if (schoolRes.data) {
@@ -93,7 +77,6 @@ export default function EcolePage() {
     }
     setLevels(levelsRes.data ?? []);
     setYears(yearsRes.data ?? []);
-    setFees(feesRes.data ?? []);
 
     setLoading(false);
   }, [router]);
@@ -154,20 +137,6 @@ export default function EcolePage() {
     if (err) setError(err.message);
     else {
       setLevelName("");
-      await loadData();
-    }
-  }
-
-  async function addFee(e: React.FormEvent) {
-    e.preventDefault();
-    if (!school || !feeAmount) return;
-    const existing = fees.find((f) => f.fee_type === feeType);
-    const { error: err } = existing
-      ? await supabase.from("fee_structures").update({ amount: Number(feeAmount) }).eq("id", existing.id)
-      : await supabase.from("fee_structures").insert({ school_id: school.id, fee_type: feeType, level_id: null, amount: Number(feeAmount) });
-    if (err) setError(err.message);
-    else {
-      setFeeAmount("");
       await loadData();
     }
   }
@@ -248,35 +217,6 @@ export default function EcolePage() {
             <input placeholder="ex. Terminale S2" value={levelName} onChange={(e) => setLevelName(e.target.value)} className={inputClass} />
             <button type="submit" className={btnClass}>
               Ajouter
-            </button>
-          </form>
-        </section>
-
-        {/* Étape 4 */}
-        <section id="frais" className="flex scroll-mt-4 flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">4. Frais généraux</h2>
-          <p className="text-sm text-zinc-500">
-            Cantine et transport (montant unique pour toute l&apos;école). L&apos;inscription et la mensualité, qui varient par niveau, se règlent depuis la page de chaque niveau.
-          </p>
-          <ul className="text-sm text-zinc-600 dark:text-zinc-400">
-            {fees.map((f) => (
-              <li key={f.id}>
-                {GENERAL_FEE_TYPES.find(([k]) => k === f.fee_type)?.[1] ?? f.fee_type} : {f.amount} FCFA
-              </li>
-            ))}
-            {fees.length === 0 && <li className="text-zinc-500">Aucun frais défini.</li>}
-          </ul>
-          <form onSubmit={addFee} className="flex flex-wrap gap-2">
-            <select value={feeType} onChange={(e) => setFeeType(e.target.value as typeof feeType)} className={inputClass}>
-              {GENERAL_FEE_TYPES.map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <input required type="number" placeholder="Montant (FCFA)" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={`w-32 ${inputClass}`} />
-            <button type="submit" className={btnClass}>
-              Définir
             </button>
           </form>
         </section>

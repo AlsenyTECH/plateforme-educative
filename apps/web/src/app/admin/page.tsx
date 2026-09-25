@@ -237,6 +237,7 @@ export default function AdminPage() {
               ["Configuration", "/admin/configuration"],
               ["Utilisateurs", "/admin/utilisateurs"],
               ["École", "/admin/ecole"],
+              ["Services", "/admin/services"],
               ["Annonces", "/admin/annonces"],
               ["Cours", "/admin/cours"],
               ["Emploi du temps", "/admin/emploi-du-temps"],

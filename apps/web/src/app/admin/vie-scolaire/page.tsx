@@ -37,6 +37,18 @@ interface HealthIncident {
   description: string;
   occurred_at: string;
 }
+interface Service {
+  id: string;
+  name: string;
+  category: "cantine" | "transport" | null;
+  active: boolean;
+}
+interface ServiceSub {
+  id: string;
+  service_id: string;
+  student_id: string;
+  active: boolean;
+}
 
 export default function VieScolairePage() {
   const router = useRouter();
@@ -47,6 +59,8 @@ export default function VieScolairePage() {
   const [canteenSubs, setCanteenSubs] = useState<CanteenSub[]>([]);
   const [transportSubs, setTransportSubs] = useState<TransportSub[]>([]);
   const [incidents, setIncidents] = useState<HealthIncident[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [serviceSubs, setServiceSubs] = useState<ServiceSub[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,10 +68,14 @@ export default function VieScolairePage() {
   const [routeName, setRouteName] = useState("");
   const [canteenStudent, setCanteenStudent] = useState("");
   const [canteenFormula, setCanteenFormula] = useState("mensuel");
+  const [canteenServiceId, setCanteenServiceId] = useState("");
   const [transportStudent, setTransportStudent] = useState("");
   const [transportRoute, setTransportRoute] = useState("");
+  const [transportServiceId, setTransportServiceId] = useState("");
   const [incidentStudent, setIncidentStudent] = useState("");
   const [incidentDescription, setIncidentDescription] = useState("");
+  const [otherServiceStudent, setOtherServiceStudent] = useState("");
+  const [otherServiceId, setOtherServiceId] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -80,7 +98,7 @@ export default function VieScolairePage() {
     }
     setSchoolId(profile.school_id);
 
-    const [studentsRes, booksRes, routesRes, canteenRes, transportRes, incidentsRes] = await Promise.all([
+    const [studentsRes, booksRes, routesRes, canteenRes, transportRes, incidentsRes, servicesRes, serviceSubsRes] = await Promise.all([
       supabase.from("students").select("id, first_name, last_name").eq("school_id", profile.school_id),
       supabase.from("library_books").select("id, title, author, total_copies").eq("school_id", profile.school_id),
       supabase.from("bus_routes").select("id, name").eq("school_id", profile.school_id),
@@ -91,6 +109,8 @@ export default function VieScolairePage() {
         .select("id, student_id, description, occurred_at")
         .eq("school_id", profile.school_id)
         .order("occurred_at", { ascending: false }),
+      supabase.from("services").select("id, name, category, active").eq("school_id", profile.school_id),
+      supabase.from("service_subscriptions").select("id, service_id, student_id, active").eq("school_id", profile.school_id),
     ]);
 
     setStudents(studentsRes.data ?? []);
@@ -99,6 +119,11 @@ export default function VieScolairePage() {
     setCanteenSubs(canteenRes.data ?? []);
     setTransportSubs(transportRes.data ?? []);
     setIncidents(incidentsRes.data ?? []);
+    const servicesData = servicesRes.data ?? [];
+    setServices(servicesData);
+    setServiceSubs(serviceSubsRes.data ?? []);
+    setCanteenServiceId((prev) => prev || servicesData.find((s) => s.category === "cantine")?.id || "");
+    setTransportServiceId((prev) => prev || servicesData.find((s) => s.category === "transport")?.id || "");
     setLoading(false);
   }, [router]);
 
@@ -137,9 +162,13 @@ export default function VieScolairePage() {
   async function addCanteenSub(e: React.FormEvent) {
     e.preventDefault();
     if (!schoolId || !canteenStudent) return;
-    const { error: err } = await supabase
-      .from("canteen_subscriptions")
-      .insert({ school_id: schoolId, student_id: canteenStudent, formula: canteenFormula, start_date: new Date().toISOString().slice(0, 10) });
+    const { error: err } = await supabase.from("canteen_subscriptions").insert({
+      school_id: schoolId,
+      student_id: canteenStudent,
+      formula: canteenFormula,
+      service_id: canteenServiceId || null,
+      start_date: new Date().toISOString().slice(0, 10),
+    });
     if (err) setError(err.message);
     else await loadData();
   }
@@ -149,7 +178,17 @@ export default function VieScolairePage() {
     if (!schoolId || !transportStudent || !transportRoute) return;
     const { error: err } = await supabase
       .from("transport_subscriptions")
-      .insert({ school_id: schoolId, student_id: transportStudent, route_id: transportRoute });
+      .insert({ school_id: schoolId, student_id: transportStudent, route_id: transportRoute, service_id: transportServiceId || null });
+    if (err) setError(err.message);
+    else await loadData();
+  }
+
+  async function addOtherServiceSub(e: React.FormEvent) {
+    e.preventDefault();
+    if (!schoolId || !otherServiceStudent || !otherServiceId) return;
+    const { error: err } = await supabase
+      .from("service_subscriptions")
+      .insert({ school_id: schoolId, student_id: otherServiceStudent, service_id: otherServiceId });
     if (err) setError(err.message);
     else await loadData();
   }
@@ -185,6 +224,11 @@ export default function VieScolairePage() {
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="mb-2 font-medium text-zinc-900 dark:text-zinc-50">Cantine</h2>
+          {services.filter((s) => s.category === "cantine").length === 0 && (
+            <p className="mb-2 rounded bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              Aucun service &quot;Cantine&quot; défini. <a href="/admin/services" className="underline">Créer le tarif dans Services</a> avant d&apos;abonner des élèves.
+            </p>
+          )}
           <ul className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
             {canteenSubs.map((c) => (
               <li key={c.id}>
@@ -202,6 +246,16 @@ export default function VieScolairePage() {
                 </option>
               ))}
             </select>
+            <select value={canteenServiceId} onChange={(e) => setCanteenServiceId(e.target.value)} className={inputClass}>
+              <option value="">Service cantine...</option>
+              {services
+                .filter((s) => s.category === "cantine" && s.active)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
             <select value={canteenFormula} onChange={(e) => setCanteenFormula(e.target.value)} className={inputClass}>
               <option value="mensuel">Mensuel</option>
               <option value="trimestriel">Trimestriel</option>
@@ -214,6 +268,11 @@ export default function VieScolairePage() {
 
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="mb-2 font-medium text-zinc-900 dark:text-zinc-50">Transport</h2>
+          {services.filter((s) => s.category === "transport").length === 0 && (
+            <p className="mb-2 rounded bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              Aucun service &quot;Transport&quot; défini. <a href="/admin/services" className="underline">Créer le tarif dans Services</a> avant d&apos;abonner des élèves.
+            </p>
+          )}
           <ul className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
             {transportSubs.map((t) => (
               <li key={t.id}>
@@ -244,6 +303,54 @@ export default function VieScolairePage() {
                   {r.name}
                 </option>
               ))}
+            </select>
+            <select value={transportServiceId} onChange={(e) => setTransportServiceId(e.target.value)} className={inputClass}>
+              <option value="">Service transport...</option>
+              {services
+                .filter((s) => s.category === "transport" && s.active)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+            <button type="submit" className={btnClass}>
+              Abonner
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="mb-2 font-medium text-zinc-900 dark:text-zinc-50">Autres services</h2>
+          <p className="mb-2 text-xs text-zinc-500">
+            Services génériques (hors cantine/transport) — <a href="/admin/services" className="underline">gérer le catalogue et les tarifs</a>.
+          </p>
+          <ul className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
+            {serviceSubs.map((ss) => (
+              <li key={ss.id}>
+                {studentName(ss.student_id)} — {services.find((s) => s.id === ss.service_id)?.name ?? "?"} ({ss.active ? "actif" : "inactif"})
+              </li>
+            ))}
+            {serviceSubs.length === 0 && <li className="text-zinc-500">Aucun abonnement.</li>}
+          </ul>
+          <form onSubmit={addOtherServiceSub} className="flex flex-wrap gap-2">
+            <select required value={otherServiceStudent} onChange={(e) => setOtherServiceStudent(e.target.value)} className={inputClass}>
+              <option value="">Élève...</option>
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.first_name} {s.last_name}
+                </option>
+              ))}
+            </select>
+            <select required value={otherServiceId} onChange={(e) => setOtherServiceId(e.target.value)} className={inputClass}>
+              <option value="">Service...</option>
+              {services
+                .filter((s) => !s.category && s.active)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
             </select>
             <button type="submit" className={btnClass}>
               Abonner

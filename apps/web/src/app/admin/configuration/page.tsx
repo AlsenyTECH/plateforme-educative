@@ -56,19 +56,15 @@ export default function ConfigurationPage() {
     }
     setSchoolId(profile.school_id);
 
-    const [schoolRes, yearsRes, levelsRes, subjectsRes, coefRes, classesRes, feesRes, teachersRes, staffRes, studentsRes] =
-      await Promise.all([
-        supabase.from("schools").select("name, legal_name, legal_registration_number").eq("id", profile.school_id).single(),
-        supabase.from("academic_years").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("levels").select("id, name, order_index").eq("school_id", profile.school_id).order("order_index"),
-        supabase.from("subjects").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("subject_coefficients").select("level_id").eq("school_id", profile.school_id),
-        supabase.from("classes").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("fee_structures").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("teachers").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("staff_members").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-        supabase.from("students").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
-      ]);
+    const [schoolRes, yearsRes, levelsRes, subjectsRes, coefRes, classesRes, servicesRes] = await Promise.all([
+      supabase.from("schools").select("name, legal_name, legal_registration_number").eq("id", profile.school_id).single(),
+      supabase.from("academic_years").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+      supabase.from("levels").select("id, name, order_index").eq("school_id", profile.school_id).order("order_index"),
+      supabase.from("subjects").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+      supabase.from("subject_coefficients").select("level_id").eq("school_id", profile.school_id),
+      supabase.from("classes").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+      supabase.from("services").select("id", { count: "exact", head: true }).eq("school_id", profile.school_id),
+    ]);
 
     const school = schoolRes.data;
     setSchoolName(school?.name ?? "");
@@ -83,10 +79,7 @@ export default function ConfigurationPage() {
     const coefficientsDone = niveauxDone && levelsData.every((l) => coveredLevelIds.has(l.id));
     const classesDone = (classesRes.count ?? 0) > 0;
     const contenuNiveauxDone = matieresDone && coefficientsDone && classesDone;
-    const fraisDone = (feesRes.count ?? 0) > 0;
-    const enseignantsDone = (teachersRes.count ?? 0) > 0;
-    const personnelDone = (staffRes.count ?? 0) > 0;
-    const elevesDone = (studentsRes.count ?? 0) > 0;
+    const servicesDone = (servicesRes.count ?? 0) > 0;
 
     setSteps([
       {
@@ -130,42 +123,12 @@ export default function ConfigurationPage() {
         blocking: true,
       },
       {
-        id: "frais",
+        id: "services",
         order: 5,
-        title: "Frais généraux",
-        description: "Cantine, transport (montant unique pour toute l'école).",
-        href: "/admin/ecole#frais",
-        done: fraisDone,
-        essential: false,
-        blocking: false,
-      },
-      {
-        id: "enseignants",
-        order: 6,
-        title: "Enseignants",
-        description: "Créer les enseignants et leur affecter leurs matières.",
-        href: "/admin/utilisateurs/enseignants",
-        done: enseignantsDone,
-        essential: false,
-        blocking: false,
-      },
-      {
-        id: "personnel",
-        order: 7,
-        title: "Personnel administratif",
-        description: "Surveillants, direction des études, etc.",
-        href: "/admin/utilisateurs/personnel",
-        done: personnelDone,
-        essential: false,
-        blocking: false,
-      },
-      {
-        id: "eleves",
-        order: 8,
-        title: "Élèves",
-        description: "Inscrire les élèves et leurs tuteurs.",
-        href: "/admin/utilisateurs/eleves",
-        done: elevesDone,
+        title: "Services",
+        description: "Cantine, transport et autres services optionnels hors scolarité, avec leur propre tarif.",
+        href: "/admin/services",
+        done: servicesDone,
         essential: false,
         blocking: false,
       },

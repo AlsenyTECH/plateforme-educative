@@ -40,7 +40,7 @@ interface HealthIncident {
 interface Service {
   id: string;
   name: string;
-  category: "cantine" | "transport" | null;
+  category: string | null;
   active: boolean;
 }
 interface ServiceSub {

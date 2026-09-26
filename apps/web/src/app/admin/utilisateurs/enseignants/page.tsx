@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { uploadPhoto } from "@/lib/upload";
+import { inviteAccount } from "@/lib/invite";
 
 interface Teacher {
   id: string;
@@ -11,6 +12,7 @@ interface Teacher {
   last_name: string;
   email: string | null;
   phone: string | null;
+  profile_id: string | null;
 }
 interface Subject {
   id: string;
@@ -34,6 +36,11 @@ export default function EnseignantsPage() {
   const [phone, setPhone] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
 
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePending, setInvitePending] = useState(false);
+  const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -56,7 +63,7 @@ export default function EnseignantsPage() {
     setSchoolId(profile.school_id);
 
     const [teachersRes, subjectsRes] = await Promise.all([
-      supabase.from("teachers").select("id, first_name, last_name, email, phone").eq("school_id", profile.school_id),
+      supabase.from("teachers").select("id, first_name, last_name, email, phone, profile_id").eq("school_id", profile.school_id),
       supabase.from("subjects").select("id, name").eq("school_id", profile.school_id),
     ]);
 
@@ -117,6 +124,23 @@ export default function EnseignantsPage() {
     await loadData();
   }
 
+  async function handleInvite(teacherId: string) {
+    if (!inviteEmail.trim()) return;
+    setInvitePending(true);
+    setError(null);
+    try {
+      const link = await inviteAccount("teacher", teacherId, inviteEmail.trim());
+      setInviteLinks((prev) => ({ ...prev, [teacherId]: link }));
+      setInvitingId(null);
+      setInviteEmail("");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
+    } finally {
+      setInvitePending(false);
+    }
+  }
+
   async function handlePhoto(teacherId: string, file: File) {
     if (!schoolId) return;
     try {
@@ -145,12 +169,69 @@ export default function EnseignantsPage() {
         <ul className="flex flex-col gap-1 text-sm">
           {teachers.map((t) => (
             <li key={t.id} className="rounded border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-              <p className="text-zinc-900 dark:text-zinc-50">
-                {t.first_name} {t.last_name}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {teacherSubjects.filter((ts) => ts.teacher_id === t.id).map((ts) => subjects.find((s) => s.id === ts.subject_id)?.name).join(", ") || "Aucune matière"}
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-zinc-900 dark:text-zinc-50">
+                    {t.first_name} {t.last_name}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {teacherSubjects.filter((ts) => ts.teacher_id === t.id).map((ts) => subjects.find((s) => s.id === ts.subject_id)?.name).join(", ") || "Aucune matière"}
+                  </p>
+                </div>
+                {t.profile_id ? (
+                  <span className="text-xs text-green-700 dark:text-green-400">Compte actif</span>
+                ) : invitingId === t.id ? null : (
+                  <button
+                    onClick={() => {
+                      setInvitingId(t.id);
+                      setInviteEmail(t.email ?? "");
+                    }}
+                    className="text-xs underline"
+                  >
+                    Inviter
+                  </button>
+                )}
+              </div>
+
+              {invitingId === t.id && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+                  <input
+                    type="email"
+                    required
+                    placeholder="Email de connexion"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className={inputClass}
+                  />
+                  <button
+                    onClick={() => void handleInvite(t.id)}
+                    disabled={invitePending}
+                    className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                  >
+                    {invitePending ? "..." : "Envoyer l'invitation"}
+                  </button>
+                  <button onClick={() => setInvitingId(null)} className="text-xs underline">
+                    Annuler
+                  </button>
+                </div>
+              )}
+
+              {inviteLinks[t.id] && (
+                <div className="mt-2 rounded bg-green-50 p-2 text-xs dark:bg-green-950">
+                  <p className="mb-1 text-green-800 dark:text-green-200">
+                    Compte créé. Envoie ce lien à {t.first_name} (WhatsApp, SMS...) pour qu&apos;il/elle définisse son mot de passe :
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded bg-white px-2 py-1 dark:bg-zinc-900">{inviteLinks[t.id]}</code>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(inviteLinks[t.id] ?? "")}
+                      className="shrink-0 rounded bg-zinc-900 px-2 py-1 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      Copier
+                    </button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
           {teachers.length === 0 && <li className="text-zinc-500">Aucun enseignant.</li>}

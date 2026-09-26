@@ -81,6 +81,17 @@ export default function AdminPage() {
       router.push("/onboarding");
       return;
     }
+
+    const roleDestinations: Record<string, string> = {
+      professeur: "/professeur",
+      eleve: "/eleve",
+      parent: "/parent",
+    };
+    if (roleDestinations[profileData.role]) {
+      router.push(roleDestinations[profileData.role]!);
+      return;
+    }
+
     setProfile(profileData);
 
     if (!profileData.school_id) {

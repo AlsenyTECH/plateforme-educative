@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { uploadPhoto } from "@/lib/upload";
+import { inviteAccount } from "@/lib/invite";
 
 interface Student {
   id: string;
@@ -12,6 +13,7 @@ interface Student {
   matricule: string | null;
   niveau_vise_id: string | null;
   status: string;
+  profile_id: string | null;
 }
 interface Level {
   id: string;
@@ -40,6 +42,11 @@ export default function ElevesPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastCreated, setLastCreated] = useState<{ id: string; name: string } | null>(null);
+
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePending, setInvitePending] = useState(false);
+  const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
 
   // Élève
   const [firstName, setFirstName] = useState("");
@@ -92,7 +99,7 @@ export default function ElevesPage() {
     setSchoolId(profile.school_id);
 
     const [studentsRes, levelsRes] = await Promise.all([
-      supabase.from("students").select("id, first_name, last_name, matricule, niveau_vise_id, status").eq("school_id", profile.school_id),
+      supabase.from("students").select("id, first_name, last_name, matricule, niveau_vise_id, status, profile_id").eq("school_id", profile.school_id),
       supabase.from("levels").select("id, name").eq("school_id", profile.school_id).order("order_index"),
     ]);
 
@@ -214,6 +221,23 @@ export default function ElevesPage() {
     await loadData();
   }
 
+  async function handleInvite(studentId: string) {
+    if (!inviteEmail.trim()) return;
+    setInvitePending(true);
+    setError(null);
+    try {
+      const link = await inviteAccount("student", studentId, inviteEmail.trim());
+      setInviteLinks((prev) => ({ ...prev, [studentId]: link }));
+      setInvitingId(null);
+      setInviteEmail("");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
+    } finally {
+      setInvitePending(false);
+    }
+  }
+
   async function handlePhoto(studentId: string, file: File) {
     if (!schoolId) return;
     try {
@@ -255,13 +279,70 @@ export default function ElevesPage() {
 
         <ul className="flex flex-col gap-1 text-sm">
           {students.map((s) => (
-            <li key={s.id} className="flex items-center justify-between rounded border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-              <a href={`/admin/eleves/${s.id}`} className="text-zinc-900 underline dark:text-zinc-50">
-                {s.matricule ? `${s.matricule} — ` : ""}
-                {s.first_name} {s.last_name}
-                {s.niveau_vise_id ? ` (${levels.find((l) => l.id === s.niveau_vise_id)?.name ?? "?"})` : ""}
-              </a>
-              <span className="text-xs text-zinc-500">{s.status}</span>
+            <li key={s.id} className="rounded border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex items-center justify-between">
+                <a href={`/admin/eleves/${s.id}`} className="text-zinc-900 underline dark:text-zinc-50">
+                  {s.matricule ? `${s.matricule} — ` : ""}
+                  {s.first_name} {s.last_name}
+                  {s.niveau_vise_id ? ` (${levels.find((l) => l.id === s.niveau_vise_id)?.name ?? "?"})` : ""}
+                </a>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">{s.status}</span>
+                  {s.profile_id ? (
+                    <span className="text-xs text-green-700 dark:text-green-400">Compte actif</span>
+                  ) : invitingId !== s.id ? (
+                    <button
+                      onClick={() => {
+                        setInvitingId(s.id);
+                        setInviteEmail("");
+                      }}
+                      className="text-xs underline"
+                    >
+                      Inviter
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+
+              {invitingId === s.id && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+                  <input
+                    type="email"
+                    required
+                    placeholder="Email de connexion"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className={inputClass}
+                  />
+                  <button
+                    onClick={() => void handleInvite(s.id)}
+                    disabled={invitePending}
+                    className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                  >
+                    {invitePending ? "..." : "Envoyer l'invitation"}
+                  </button>
+                  <button onClick={() => setInvitingId(null)} className="text-xs underline">
+                    Annuler
+                  </button>
+                </div>
+              )}
+
+              {inviteLinks[s.id] && (
+                <div className="mt-2 rounded bg-green-50 p-2 text-xs dark:bg-green-950">
+                  <p className="mb-1 text-green-800 dark:text-green-200">
+                    Compte créé. Envoie ce lien à {s.first_name} (WhatsApp, SMS...) pour qu&apos;il/elle définisse son mot de passe :
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded bg-white px-2 py-1 dark:bg-zinc-900">{inviteLinks[s.id]}</code>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(inviteLinks[s.id] ?? "")}
+                      className="shrink-0 rounded bg-zinc-900 px-2 py-1 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      Copier
+                    </button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
           {students.length === 0 && <li className="text-zinc-500">Aucun élève.</li>}

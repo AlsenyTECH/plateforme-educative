@@ -1,10 +1,11 @@
 // Cree un vrai compte de connexion pour une entite deja existante
-// (teacher/staff_member/guardian) qui n'en a pas encore, sans dependre
-// de l'envoi d'email (le service email par defaut de Supabase a un quota
-// trop bas, et aucun SMTP personnalise n'est configure pour l'instant -
-// voir memoire projet). generateLink cree le compte et renvoie un lien
-// d'action a partager manuellement (WhatsApp/SMS/en main propre) plutot
-// que de compter sur un email qui pourrait ne jamais arriver.
+// (teacher/staff_member/guardian/student) qui n'en a pas encore, sans
+// dependre de l'envoi d'email (le service email par defaut de Supabase a
+// un quota trop bas, et aucun SMTP personnalise n'est configure pour
+// l'instant - voir memoire projet). generateLink cree le compte et
+// renvoie un lien d'action a partager manuellement (WhatsApp/SMS/en main
+// propre) plutot que de compter sur un email qui pourrait ne jamais
+// arriver.
 //
 // Reserve au compte 'admin' (pas 'direction') : coherent avec
 // user_permissions dont l'ecriture est deja verrouillee au seul admin -
@@ -17,6 +18,7 @@ const ENTITY_CONFIG: Record<string, { table: string; role: string }> = {
   teacher: { table: "teachers", role: "professeur" },
   staff_member: { table: "staff_members", role: "personnel" },
   guardian: { table: "guardians", role: "parent" },
+  student: { table: "students", role: "eleve" },
 };
 
 Deno.serve(async (req: Request) => {

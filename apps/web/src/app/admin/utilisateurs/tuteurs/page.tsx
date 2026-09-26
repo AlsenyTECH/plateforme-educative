@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { inviteAccount } from "@/lib/invite";
 
 interface Guardian {
   id: string;
@@ -11,6 +12,7 @@ interface Guardian {
   phone: string;
   email: string | null;
   profession: string | null;
+  profile_id: string | null;
 }
 interface Link {
   guardian_id: string;
@@ -46,6 +48,11 @@ export default function TuteursPage() {
   const [attachRole, setAttachRole] = useState("responsable_principal");
   const [attaching, setAttaching] = useState(false);
 
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePending, setInvitePending] = useState(false);
+  const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const { data: sessionData } = await supabase.auth.getSession();
@@ -69,7 +76,7 @@ export default function TuteursPage() {
 
     const { data: guardiansData } = await supabase
       .from("guardians")
-      .select("id, first_name, last_name, phone, email, profession")
+      .select("id, first_name, last_name, phone, email, profession, profile_id")
       .eq("school_id", profile.school_id);
     setGuardians(guardiansData ?? []);
 
@@ -147,6 +154,23 @@ export default function TuteursPage() {
     await loadData();
   }
 
+  async function handleInvite(guardianId: string) {
+    if (!inviteEmail.trim()) return;
+    setInvitePending(true);
+    setError(null);
+    try {
+      const link = await inviteAccount("guardian", guardianId, inviteEmail.trim());
+      setInviteLinks((prev) => ({ ...prev, [guardianId]: link }));
+      setInvitingId(null);
+      setInviteEmail("");
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'invitation");
+    } finally {
+      setInvitePending(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!schoolId) return;
@@ -206,13 +230,68 @@ export default function TuteursPage() {
                         : "Aucun élève lié"}
                     </p>
                   </div>
-                  <button
-                    onClick={() => (isAttaching ? setAttachingFor(null) : startAttaching(g.id))}
-                    className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
-                  >
-                    {isAttaching ? "Annuler" : "Attacher à un élève"}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {g.profile_id ? (
+                      <span className="text-xs text-green-700 dark:text-green-400">Compte actif</span>
+                    ) : invitingId !== g.id ? (
+                      <button
+                        onClick={() => {
+                          setInvitingId(g.id);
+                          setInviteEmail(g.email ?? "");
+                        }}
+                        className="text-xs underline"
+                      >
+                        Inviter
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => (isAttaching ? setAttachingFor(null) : startAttaching(g.id))}
+                      className="rounded bg-zinc-200 px-2 py-1 text-xs text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+                    >
+                      {isAttaching ? "Annuler" : "Attacher à un élève"}
+                    </button>
+                  </div>
                 </div>
+
+                {invitingId === g.id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+                    <input
+                      type="email"
+                      required
+                      placeholder="Email de connexion"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className={inputClass}
+                    />
+                    <button
+                      onClick={() => void handleInvite(g.id)}
+                      disabled={invitePending}
+                      className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      {invitePending ? "..." : "Envoyer l'invitation"}
+                    </button>
+                    <button onClick={() => setInvitingId(null)} className="text-xs underline">
+                      Annuler
+                    </button>
+                  </div>
+                )}
+
+                {inviteLinks[g.id] && (
+                  <div className="mt-2 rounded bg-green-50 p-2 text-xs dark:bg-green-950">
+                    <p className="mb-1 text-green-800 dark:text-green-200">
+                      Compte créé. Envoie ce lien à {g.first_name} (WhatsApp, SMS...) pour qu&apos;il/elle définisse son mot de passe :
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 break-all rounded bg-white px-2 py-1 dark:bg-zinc-900">{inviteLinks[g.id]}</code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(inviteLinks[g.id] ?? "")}
+                        className="shrink-0 rounded bg-zinc-900 px-2 py-1 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      >
+                        Copier
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {isAttaching && (
                   <div className="mt-2 flex flex-col gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">

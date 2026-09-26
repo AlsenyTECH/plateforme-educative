@@ -27,12 +27,23 @@ export default function LoginPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id")
+      .select("role")
       .eq("id", signInData.session.user.id)
       .maybeSingle();
 
     setLoading(false);
-    router.push(profile ? "/admin" : "/onboarding");
+
+    if (!profile) {
+      router.push("/onboarding");
+      return;
+    }
+
+    const destinations: Record<string, string> = {
+      professeur: "/professeur",
+      eleve: "/eleve",
+      parent: "/parent",
+    };
+    router.push(destinations[profile.role] ?? "/admin");
   }
 
   return (

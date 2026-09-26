@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-export type InviteEntityType = "teacher" | "staff_member" | "guardian";
+export type InviteEntityType = "teacher" | "staff_member" | "guardian" | "student";
 
 export async function inviteAccount(entityType: InviteEntityType, entityId: string, email: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke("invite-account", {

@@ -1,24 +1,46 @@
-import { USER_ROLES } from "@plateforme/shared";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+
+const ROLE_DESTINATIONS: Record<string, string> = {
+  professeur: "/professeur",
+  eleve: "/eleve",
+  parent: "/parent",
+};
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.session.user.id)
+        .maybeSingle();
+
+      if (!profile) {
+        router.push("/onboarding");
+        return;
+      }
+
+      router.push(ROLE_DESTINATIONS[profile.role] ?? "/admin");
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [router]);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-50 p-8 dark:bg-black">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Plateforme Éducative — web
-      </h1>
-      <p className="text-zinc-600 dark:text-zinc-400">
-        Placeholder de structure. Espaces à construire pour les rôles :
-      </p>
-      <ul className="flex gap-2">
-        {USER_ROLES.map((role) => (
-          <li
-            key={role}
-            className="rounded-full bg-zinc-200 px-3 py-1 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
-          >
-            {role}
-          </li>
-        ))}
-      </ul>
+    <main className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
+      <p className="text-zinc-600 dark:text-zinc-400">Chargement...</p>
     </main>
   );
 }
